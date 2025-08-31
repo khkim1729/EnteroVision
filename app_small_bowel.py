@@ -148,7 +148,7 @@ def display_visualization(results, selected_organs, show_ct_slices):
     st.info(f"🔍 검출된 장기: {', '.join(results['visualization_data'].keys())}")
     
     # 탭으로 다양한 뷰 제공
-    tab1, tab2, tab3, tab4 = st.tabs(["3D Visualization", "CT Slices", "Straightened View", "Analysis"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["3D Visualization", "All Organs 3D", "CT Slices", "Straightened View", "Analysis"])
     
     with tab1:
         st.subheader("🎯 3D Volume Rendering")
@@ -219,6 +219,154 @@ def display_visualization(results, selected_organs, show_ct_slices):
             st.info("사용 가능한 장기: " + ", ".join(available_organs))
     
     with tab2:
+        st.subheader("🧠 TotalSegmentator - All Detected Organs 3D Visualization")
+        st.markdown("**모든 검출된 장기를 한번에 보여주는 종합 3D 뷰**")
+        
+        # 장기 분류별로 그룹화
+        organ_groups = {
+            "소화기계": ["small_bowel", "colon", "stomach", "duodenum", "liver", "pancreas", "gallbladder", "spleen"],
+            "비뇨기계": ["kidney_left", "kidney_right", "adrenal_gland_left", "adrenal_gland_right"],
+            "호흡기계": ["lung_upper_lobe_left", "lung_lower_lobe_left", "lung_upper_lobe_right", 
+                      "lung_middle_lobe_right", "lung_lower_lobe_right"],
+            "순환기계": ["heart", "aorta", "postcava", "portal_vein_splenic_vein", 
+                      "iliac_artery_left", "iliac_artery_right", "iliac_vena_left", "iliac_vena_right"],
+            "골격계": [f"vertebrae_{level}" for level in ["C1", "C2", "C3", "C4", "C5", "C6", "C7",
+                                                        "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12",
+                                                        "L1", "L2", "L3", "L4", "L5"]],
+            "기타": ["brain"]
+        }
+        
+        # 실제로 검출된 장기들만 필터링
+        available_organs = list(results['visualization_data'].keys())
+        detected_groups = {}
+        
+        for group_name, organs in organ_groups.items():
+            detected_organs = [organ for organ in organs if organ in available_organs]
+            if detected_organs:
+                detected_groups[group_name] = detected_organs
+        
+        # 미분류된 장기들
+        categorized_organs = []
+        for organs in detected_groups.values():
+            categorized_organs.extend(organs)
+        uncategorized = [organ for organ in available_organs if organ not in categorized_organs]
+        if uncategorized:
+            detected_groups["기타"] = detected_groups.get("기타", []) + uncategorized
+        
+        st.write(f"**검출된 장기 그룹:** {len(detected_groups)}개 그룹, 총 {len(available_organs)}개 장기")
+        
+        # 시각화 옵션
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 그룹별 선택
+            selected_groups = st.multiselect(
+                "표시할 장기 그룹 선택:",
+                list(detected_groups.keys()),
+                default=list(detected_groups.keys())[:3],  # 처음 3개 그룹만 기본 선택
+                key="all_organs_groups"
+            )
+        
+        with col2:
+            # 전체 표시 옵션
+            show_all_at_once = st.checkbox(
+                "모든 장기 한번에 표시", 
+                value=False,
+                help="⚠️ 많은 장기를 동시에 표시하면 느려질 수 있습니다"
+            )
+            
+            opacity_level = st.slider(
+                "장기 투명도", 
+                0.1, 1.0, 0.7,
+                key="all_organs_opacity"
+            )
+        
+        # 선택된 그룹의 장기들 수집
+        organs_to_display = []
+        if show_all_at_once:
+            organs_to_display = available_organs
+        else:
+            for group in selected_groups:
+                if group in detected_groups:
+                    organs_to_display.extend(detected_groups[group])
+        
+        # 장기 수 제한 (성능을 위해)
+        max_organs = 20
+        if len(organs_to_display) > max_organs:
+            st.warning(f"⚠️ 성능을 위해 처음 {max_organs}개 장기만 표시합니다.")
+            organs_to_display = organs_to_display[:max_organs]
+        
+        if organs_to_display:
+            # 선택된 장기 정보 표시
+            st.info(f"🎯 표시할 장기: {len(organs_to_display)}개 - {', '.join(organs_to_display[:10])}{'...' if len(organs_to_display) > 10 else ''}")
+            
+            # 필터링된 데이터 준비
+            filtered_all_organs = {
+                k: v for k, v in results['visualization_data'].items() 
+                if k in organs_to_display
+            }
+            
+            # 3D 렌더러 생성
+            with st.spinner(f"{len(organs_to_display)}개 장기의 3D 표면을 생성하는 중..."):
+                volume_renderer_all = VolumeRenderer3D()
+                volume_renderer_all.load_data(
+                    results['original_ct'],
+                    filtered_all_organs
+                )
+                
+                # 3D 플롯 생성
+                fig_all_organs = volume_renderer_all.create_interactive_plot(
+                    selected_organs=list(filtered_all_organs.keys()),
+                    show_slices=False  # 많은 장기 표시 시 슬라이스는 끄기
+                )
+                
+                # 투명도 적용
+                for trace in fig_all_organs.data:
+                    if hasattr(trace, 'opacity'):
+                        trace.opacity = opacity_level
+                
+                # 더 큰 화면으로 표시
+                fig_all_organs.update_layout(
+                    width=1000,
+                    height=800,
+                    title=f"TotalSegmentator - {len(organs_to_display)} Organs 3D Visualization"
+                )
+                
+                st.plotly_chart(fig_all_organs, use_container_width=True)
+            
+            # 그룹별 통계 표시
+            st.subheader("📊 그룹별 장기 통계")
+            
+            group_cols = st.columns(min(len(selected_groups), 4))  # 최대 4개 컬럼
+            
+            for idx, group_name in enumerate(selected_groups):
+                if group_name in detected_groups:
+                    col_idx = idx % 4
+                    with group_cols[col_idx]:
+                        st.markdown(f"**{group_name}**")
+                        
+                        group_organs = [organ for organ in detected_groups[group_name] 
+                                      if organ in results['visualization_data']]
+                        
+                        total_voxels = 0
+                        for organ in group_organs:
+                            if organ in results['visualization_data']:
+                                voxels = np.sum(results['visualization_data'][organ]['mask'])
+                                total_voxels += voxels
+                                st.write(f"• {organ.replace('_', ' ')}: {voxels:,}")
+                        
+                        st.write(f"**총합: {total_voxels:,} voxels**")
+                        st.write(f"**추정 부피: {total_voxels * 0.5:.1f} ml**")
+        
+        else:
+            st.warning("⚠️ 표시할 장기 그룹을 선택하세요.")
+            
+            # 사용 가능한 그룹 정보 표시
+            for group_name, organs in detected_groups.items():
+                with st.expander(f"🔍 {group_name} ({len(organs)}개 장기)"):
+                    st.write(", ".join([organ.replace('_', ' ') for organ in organs]))
+    
+    with tab3:
         st.subheader("🔍 CT Slice Viewer with Organ Overlay")
         
         # 슬라이스 뷰어용 장기 선택
@@ -321,7 +469,7 @@ def display_visualization(results, selected_organs, show_ct_slices):
         if not slice_organs:
             st.info("장기를 선택하면 슬라이스 오버레이를 볼 수 있습니다.")
     
-    with tab3:
+    with tab4:
         st.subheader("📏 Straightened Small Bowel View")
         
         # 소장이 검출된 경우에만 펼친 뷰 표시
@@ -360,7 +508,7 @@ def display_visualization(results, selected_organs, show_ct_slices):
         else:
             st.warning("소장이 검출되지 않았습니다. TotalSegmentator 자동 분할을 활성화해보세요.")
     
-    with tab4:
+    with tab5:
         st.subheader("🔬 Detailed Analysis")
         
         # 파일 정보

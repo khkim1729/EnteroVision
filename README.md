@@ -9,8 +9,12 @@ EnteroVision v2는 CT 데이터 기반 장협착증, 장유착 및 장폐쇄 조
 ### 1. 소장(Small Bowel) 전용 분석 - `app_small_bowel.py`
 - **TotalSegmentator 자동 분할**: AI 기반 소장 및 주변 장기 자동 검출
 - **3D 시각화**: 소장과 주변 장기의 실시간 3D 렌더링
+- **🆕 All Organs 3D**: **TotalSegmentator로 검출된 모든 장기를 한번에 3D 시각화**
+  - **장기 시스템별 그룹화**: 소화기계, 비뇨기계, 호흡기계, 순환기계, 골격계
+  - **최대 104개 해부학 구조** 동시 시각화 지원
+  - **성능 최적화**: 그룹 선택 및 투명도 조절 기능
 - **Straightened View**: 구불구불한 소장을 일자로 펼친 2D 뷰
-- **다중 축 CT 슬라이스**: Axial, Sagittal, Coronal 뷰 지원
+- **Enhanced CT Slices**: HU 윈도우 프리셋과 장기 오버레이 지원
 - **상세 분석 리포트**: 장기별 통계 및 HU 값 분석
 
 ### 2. 대장(Colon) 전용 분석 - `app_colon_analysis.py`
@@ -75,6 +79,28 @@ streamlit run app_colon_analysis.py --server.port 8502
 
 브라우저에서 각각 `http://localhost:8501`, `http://localhost:8502`로 접속
 
+### 🌐 원격 서버 접속 방법 (SSH 터널링)
+
+introai16 서버에서 EnteroVision이 실행 중인 경우, SSH 터널링을 통해 로컬에서 접속할 수 있습니다.
+
+#### SSH 터널링 설정
+```bash
+# 소장 분석 애플리케이션 접속
+ssh -L 18501:localhost:8501 introai16@147.46.121.39
+
+# 대장 분석 애플리케이션 접속  
+ssh -L 18502:localhost:8502 introai16@147.46.121.39
+```
+
+#### 브라우저 접속
+터널링 연결 후 브라우저에서 다음 주소로 접속:
+- **소장 분석**: `http://localhost:18501`
+- **대장 분석**: `http://localhost:18502`
+
+#### 연결 문제 해결
+- **Connection 오류 발생 시**: 비밀번호를 2회 이상 입력하면 해결됩니다
+- **서버 상태**: introai16 서버에서 tmux를 통해 Streamlit 애플리케이션이 상시 실행 중입니다
+
 ## 🚀 사용 방법
 
 ### 소장 분석 워크플로우
@@ -83,8 +109,12 @@ streamlit run app_colon_analysis.py --server.port 8502
 2. **처리 옵션 설정**: TotalSegmentator 자동 분할 활성화
 3. **분석 시작**: "🚀 분석 시작" 버튼 클릭 (2-5분 소요)
 4. **결과 확인**:
-   - **3D Visualization**: 소장 및 주변 장기의 3D 뷰
-   - **CT Slices**: 다축 CT 슬라이스 뷰어
+   - **3D Visualization**: 선택한 장기들의 3D 뷰 (최대 3개 기본 선택)
+   - **🆕 All Organs 3D**: **모든 검출된 장기를 시스템별로 그룹화하여 시각화**
+     - 소화기계, 비뇨기계, 호흡기계, 순환기계, 골격계별 선택 가능
+     - 최대 20개 장기 동시 표시로 성능 최적화
+     - 투명도 조절로 내부 구조까지 확인 가능
+   - **CT Slices**: HU 윈도우 프리셋과 장기 오버레이 지원
    - **Straightened View**: 펼친 소장 구조
    - **Analysis**: 상세 통계 및 보고서
 
@@ -183,11 +213,15 @@ streamlit run app_small_bowel.py
 ```
 
 ### 향후 개발 계획
+- [x] **🆕 완료**: TotalSegmentator 전체 장기 시각화 (104개 해부학 구조)
+- [x] **🆕 완료**: 장기 시스템별 그룹화 및 필터링
+- [x] **🆕 완료**: 향상된 CT 슬라이스 뷰어 (HU 윈도우 프리셋)
 - [ ] DICOM 파일 직접 지원
 - [ ] AI 기반 이상 소견 자동 검출
 - [ ] 다중 환자 배치 처리
 - [ ] 웹 기반 PACS 연동
 - [ ] 모바일 뷰어 지원
+- [ ] 장기별 3D 애니메이션 및 회전 뷰
 
 ## 📜 라이선스
 
