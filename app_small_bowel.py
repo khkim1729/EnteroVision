@@ -222,18 +222,35 @@ def display_visualization(results, selected_organs, show_ct_slices):
         st.subheader("🧠 TotalSegmentator - All Detected Organs 3D Visualization")
         st.markdown("**모든 검출된 장기를 한번에 보여주는 종합 3D 뷰**")
         
-        # 장기 분류별로 그룹화
+        # 장기 분류별로 그룹화 - TotalSegmentator 104개 구조 기준
         organ_groups = {
-            "소화기계": ["small_bowel", "colon", "stomach", "duodenum", "liver", "pancreas", "gallbladder", "spleen"],
-            "비뇨기계": ["kidney_left", "kidney_right", "adrenal_gland_left", "adrenal_gland_right"],
+            "소화기계": ["small_bowel", "colon", "stomach", "duodenum", "liver", "pancreas", "gallbladder", 
+                      "spleen", "esophagus", "trachea"],
+            
+            "비뇨생식기계": ["kidney_left", "kidney_right", "adrenal_gland_left", "adrenal_gland_right",
+                        "kidney_cyst_left", "kidney_cyst_right", "urinary_bladder", "prostate"],
+            
             "호흡기계": ["lung_upper_lobe_left", "lung_lower_lobe_left", "lung_upper_lobe_right", 
                       "lung_middle_lobe_right", "lung_lower_lobe_right"],
+            
             "순환기계": ["heart", "aorta", "postcava", "portal_vein_splenic_vein", 
                       "iliac_artery_left", "iliac_artery_right", "iliac_vena_left", "iliac_vena_right"],
-            "골격계": [f"vertebrae_{level}" for level in ["C1", "C2", "C3", "C4", "C5", "C6", "C7",
-                                                        "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12",
-                                                        "L1", "L2", "L3", "L4", "L5"]],
-            "기타": ["brain"]
+            
+            "척추": [f"vertebrae_{level}" for level in ["C1", "C2", "C3", "C4", "C5", "C6", "C7",
+                                                      "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12",
+                                                      "L1", "L2", "L3", "L4", "L5", "S1", "Coccyx"]],
+            
+            "늑골": [f"rib_{i}_{side}" for i in range(1, 13) for side in ["left", "right"]],
+            
+            "사지골격": ["humerus_left", "humerus_right", "scapula_left", "scapula_right", 
+                      "clavicula_left", "clavicula_right", "femur_left", "femur_right", 
+                      "hip_left", "hip_right", "sacrum"],
+            
+            "근육계": ["gluteus_maximus_left", "gluteus_maximus_right", "gluteus_medius_left", "gluteus_medius_right",
+                    "gluteus_minimus_left", "gluteus_minimus_right", "autochthon_left", "autochthon_right",
+                    "iliopsoas_left", "iliopsoas_right"],
+            
+            "두경부": ["brain", "face"]
         }
         
         # 실제로 검출된 장기들만 필터링
