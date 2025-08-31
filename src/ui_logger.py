@@ -47,7 +47,7 @@ class UILogger:
         """에러 로그만 반환"""
         return self.errors
     
-    def display_logs(self, show_all=False):
+    def display_logs(self, show_all=False, container=None):
         """Streamlit에서 로그 표시"""
         if not self.logs:
             return
@@ -78,6 +78,45 @@ class UILogger:
                     st.success(f"{emoji} {log['message']}")
                 else:
                     st.info(f"{emoji} {log['message']}")
+    
+    def display_realtime_logs(self, container, max_lines=20):
+        """실시간 로그를 채팅창 스타일로 표시"""
+        if not self.logs:
+            container.info("📋 로그가 없습니다.")
+            return
+            
+        # 최근 로그들만 표시 (성능을 위해)
+        recent_logs = self.logs[-max_lines:] if len(self.logs) > max_lines else self.logs
+        
+        with container.container():
+            # 로그를 역순으로 표시 (최신이 위로)
+            for log in reversed(recent_logs):
+                emoji = self._get_emoji(log['level'])
+                timestamp = log['timestamp']
+                message = log['message']
+                level = log['level']
+                
+                # 레벨별 스타일링
+                if level == "ERROR":
+                    st.error(f"`{timestamp}` {emoji} {message}")
+                elif level == "WARNING":
+                    st.warning(f"`{timestamp}` {emoji} {message}")
+                elif level == "SUCCESS":
+                    st.success(f"`{timestamp}` {emoji} {message}")
+                else:
+                    st.info(f"`{timestamp}` {emoji} {message}")
+    
+    def get_log_summary(self):
+        """로그 요약 정보 반환"""
+        if not self.logs:
+            return "로그 없음"
+            
+        total = len(self.logs)
+        errors = len([log for log in self.logs if log['level'] == 'ERROR'])
+        warnings = len([log for log in self.logs if log['level'] == 'WARNING'])
+        successes = len([log for log in self.logs if log['level'] == 'SUCCESS'])
+        
+        return f"총 {total}개 (✅{successes} ⚠️{warnings} ❌{errors})"
     
     def _get_emoji(self, level):
         """로그 레벨별 이모지 반환"""

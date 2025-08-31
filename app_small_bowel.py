@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import numpy as np
 import os
 import sys
+import time
 from pathlib import Path
 import traceback
 
@@ -95,36 +96,95 @@ def main():
         
         # 처리 시작 버튼
         process_button = st.button("🚀 분석 시작", type="primary")
+        
+        # 실시간 로그 섹션
+        st.header("📊 실시간 처리 로그")
+        
+        # 로그 토글
+        show_realtime_logs = st.checkbox(
+            "실시간 로그 보기", 
+            value=True,
+            help="처리 중 실시간으로 로그를 확인할 수 있습니다"
+        )
+        
+        if show_realtime_logs:
+            # 로그 요약
+            log_summary = ui_logger.get_log_summary()
+            st.write(f"**로그 상태:** {log_summary}")
+            
+            # 실시간 로그 컨테이너
+            log_container = st.container()
+            
+            with log_container:
+                if ui_logger.get_logs():
+                    # 스크롤 가능한 로그 영역
+                    ui_logger.display_realtime_logs(log_container, max_lines=15)
+                else:
+                    st.info("📋 분석을 시작하면 여기에 실시간 로그가 표시됩니다.")
+        else:
+            st.info("실시간 로그가 비활성화되었습니다.")
     
     # 메인 영역
     if process_button:
         # 로그 초기화
         ui_logger.clear()
         
-        # 실시간 로그 컨테이너 생성
-        log_container = st.empty()
+        # 실시간 로그 컨테이너 생성 (사이드바용)
+        sidebar_log_container = st.sidebar.empty()
+        
+        # 진행상황 표시용 컨테이너
         progress_container = st.empty()
+        
+        def update_sidebar_logs():
+            """사이드바 로그 실시간 업데이트"""
+            if show_realtime_logs:
+                with sidebar_log_container.container():
+                    if ui_logger.get_logs():
+                        st.write("**📋 실시간 처리 상황**")
+                        # 최근 5개 로그만 표시 (사이드바 공간 절약)
+                        recent_logs = ui_logger.get_logs()[-5:]
+                        for log in reversed(recent_logs):
+                            emoji = ui_logger._get_emoji(log['level'])
+                            if log['level'] == "ERROR":
+                                st.error(f"`{log['timestamp']}` {emoji} {log['message']}")
+                            elif log['level'] == "WARNING":
+                                st.warning(f"`{log['timestamp']}` {emoji} {log['message']}")
+                            elif log['level'] == "SUCCESS":
+                                st.success(f"`{log['timestamp']}` {emoji} {log['message']}")
+                            else:
+                                st.info(f"`{log['timestamp']}` {emoji} {log['message']}")
         
         try:
             with progress_container:
                 progress_bar = st.progress(0)
                 status_text = st.empty()
             
-            # CT 데이터 처리
+            # CT 데이터 처리 시작
+            ui_logger.log("🚀 CT 데이터 처리 시작", "INFO")
+            ui_logger.log(f"📁 선택된 파일: {selected_file.name}", "INFO")
+            update_sidebar_logs()
+            time.sleep(0.1)  # UI 업데이트 대기
+            
             with st.spinner("CT 데이터 처리 중... 몇 분 소요될 수 있습니다."):
                 status_text.text("🚀 TotalSegmentator 실행 중...")
                 progress_bar.progress(20)
                 
-                ui_logger.log("🚀 CT 데이터 처리 시작", "INFO")
-                ui_logger.log(f"📁 선택된 파일: {selected_file.name}", "INFO")
+                ui_logger.log("🧠 TotalSegmentator AI 모델 로딩 중...", "INFO")
+                update_sidebar_logs()
+                time.sleep(0.1)  # UI 업데이트 대기
                 
                 results = process_ct_for_visualization(str(selected_file))
                 
                 progress_bar.progress(80)
                 status_text.text("🎯 시각화 데이터 준비 중...")
                 
+                ui_logger.log("🎨 3D 시각화 데이터 생성 중...", "INFO")
+                update_sidebar_logs()
+                time.sleep(0.1)  # UI 업데이트 대기
+                
                 if results is None:
                     ui_logger.log("❌ CT 데이터 처리 실패", "ERROR")
+                    update_sidebar_logs()
                     st.error("CT 데이터 처리에 실패했습니다.")
                     
                     # 에러 로그 표시
@@ -140,6 +200,7 @@ def main():
                 status_text.text("✅ 처리 완료!")
                 
                 ui_logger.log("🎉 CT 데이터 처리 완료!", "SUCCESS")
+                update_sidebar_logs()
                 st.success("✅ CT 데이터 처리 완료!")
                 
         except Exception as e:

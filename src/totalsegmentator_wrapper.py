@@ -168,6 +168,8 @@ class TotalSegmentatorWrapper:
         Returns:
             segmentation_path: 분할 결과 파일 경로
         """
+        if UI_LOGGING and ui_logger:
+            ui_logger.log(f"🚀 TotalSegmentator 실행 시작", "INFO")
         print(f"TotalSegmentator 실행 시작: {input_path}")
         
         # 입력 파일명에서 결과 파일명 생성
@@ -185,6 +187,8 @@ class TotalSegmentatorWrapper:
         
         # 이미 존재하는지 확인
         if os.path.exists(output_path):
+            if UI_LOGGING and ui_logger:
+                ui_logger.log(f"✅ 기존 분할 결과 발견: {base_name}_totalseg.nii.gz", "SUCCESS")
             print(f"기존 분할 결과 발견: {output_path}")
             self.segmentation_result = output_path
             return output_path
@@ -200,6 +204,9 @@ class TotalSegmentatorWrapper:
                 '--fast',  # 빠른 모드 (필요시)
             ]
             
+            if UI_LOGGING and ui_logger:
+                ui_logger.log(f"🔧 명령어 준비: TotalSegmentator --task {task} --ml --fast", "INFO")
+                ui_logger.log(f"⏳ AI 모델 실행 중... (2-5분 소요)", "INFO")
             print(f"실행 명령: {' '.join(cmd)}")
             
             # 서브프로세스로 TotalSegmentator 실행
@@ -211,46 +218,70 @@ class TotalSegmentatorWrapper:
             )
             
             if result.returncode != 0:
+                if UI_LOGGING and ui_logger:
+                    ui_logger.log(f"❌ TotalSegmentator 실행 실패 (코드: {result.returncode})", "ERROR")
+                    if result.stderr:
+                        ui_logger.log(f"🔍 오류 내용: {result.stderr[:200]}...", "ERROR")
                 print(f"TotalSegmentator 실행 실패:")
                 print(f"STDOUT: {result.stdout}")
                 print(f"STDERR: {result.stderr}")
                 return None
             
+            if UI_LOGGING and ui_logger:
+                ui_logger.log("✅ TotalSegmentator 처리 완료!", "SUCCESS")
             print("TotalSegmentator 실행 완료")
             
             # 결과 확인 및 저장
             if os.path.exists(output_path):
+                if UI_LOGGING and ui_logger:
+                    ui_logger.log(f"📁 분할 결과 저장: {base_name}_totalseg.nii.gz", "SUCCESS")
                 print(f"분할 결과 저장 완료: {output_path}")
                 self.segmentation_result = output_path
                 return output_path
             else:
+                if UI_LOGGING and ui_logger:
+                    ui_logger.log(f"❌ 분할 결과 파일을 찾을 수 없음", "ERROR")
                 print(f"분할 결과 파일을 찾을 수 없음: {output_path}")
                 return None
                 
         except subprocess.TimeoutExpired:
+            if UI_LOGGING and ui_logger:
+                ui_logger.log("⏰ TotalSegmentator 실행 시간 초과 (10분)", "ERROR")
             print("TotalSegmentator 실행 시간 초과")
             return None
         except Exception as e:
+            if UI_LOGGING and ui_logger:
+                ui_logger.log(f"❌ 실행 오류: {str(e)}", "ERROR")
             print(f"TotalSegmentator 실행 중 오류: {e}")
             return None
     
     def load_segmentation(self, segmentation_path):
         """분할 결과를 로드"""
         try:
+            if UI_LOGGING and ui_logger:
+                ui_logger.log(f"📂 분할 결과 파일 로딩 중...", "INFO")
+            
             segmentation_image = sitk.ReadImage(segmentation_path)
             segmentation_array = sitk.GetArrayFromImage(segmentation_image)
             
-            print(f"분할 결과 로드 완료: {segmentation_array.shape}")
-            print(f"라벨 범위: {np.min(segmentation_array)} ~ {np.max(segmentation_array)}")
-            
             # 존재하는 라벨들 확인
             unique_labels = np.unique(segmentation_array)
+            
+            if UI_LOGGING and ui_logger:
+                ui_logger.log(f"✅ 분할 결과 로드 완료: {segmentation_array.shape}", "SUCCESS")
+                ui_logger.log(f"🔢 검출된 장기 수: {len(unique_labels)-1}개 (배경 제외)", "INFO")
+                ui_logger.log(f"🏷️ 라벨 범위: {np.min(segmentation_array)} ~ {np.max(segmentation_array)}", "INFO")
+            
+            print(f"분할 결과 로드 완료: {segmentation_array.shape}")
+            print(f"라벨 범위: {np.min(segmentation_array)} ~ {np.max(segmentation_array)}")
             print(f"존재하는 라벨 수: {len(unique_labels)}")
             print(f"처음 20개 라벨: {unique_labels[:20]}")
             
             return segmentation_array, segmentation_image
             
         except Exception as e:
+            if UI_LOGGING and ui_logger:
+                ui_logger.log(f"❌ 분할 결과 로드 실패: {str(e)}", "ERROR")
             print(f"분할 결과 로드 실패: {e}")
             return None, None
     
@@ -279,8 +310,15 @@ class TotalSegmentatorWrapper:
     def get_3d_visualization_data(self, segmentation_array, organ_names=None):
         """3D 시각화를 위한 데이터 준비 - 모든 검출된 장기 자동 발견"""
         
+        if UI_LOGGING and ui_logger:
+            ui_logger.log("🎨 3D 시각화 데이터 생성 시작", "INFO")
+        
         # 먼저 실제 존재하는 라벨들 확인
         unique_labels = np.unique(segmentation_array)
+        
+        if UI_LOGGING and ui_logger:
+            ui_logger.log(f"🔍 라벨 스캔: {len(unique_labels)}개 발견 (배경 포함)", "INFO")
+        
         self._log(f"🔍 Segmentation 파일의 라벨들: {unique_labels[:20]}{'...' if len(unique_labels) > 20 else ''}", "INFO")
         self._log(f"📊 총 {len(unique_labels)}개 라벨 발견", "INFO")
         
