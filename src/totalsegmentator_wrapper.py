@@ -12,6 +12,14 @@ from pathlib import Path
 import subprocess
 import json
 
+# UI 로깅 시스템 (optional import)
+try:
+    from .ui_logger import ui_logger
+    UI_LOGGING = True
+except ImportError:
+    UI_LOGGING = False
+    ui_logger = None
+
 class TotalSegmentatorWrapper:
     """TotalSegmentator를 이용한 자동 장기 분할"""
     
@@ -140,8 +148,14 @@ class TotalSegmentatorWrapper:
                 else:
                     self.bowel_related_organs[organ_name] = label_id
         
-        print("TotalSegmentator 래퍼 초기화 완료")
-        print(f"소장 라벨 ID: {self.bowel_related_organs['small_bowel']}")
+        self._log("TotalSegmentator 래퍼 초기화 완료", "SUCCESS")
+        self._log(f"소장 라벨 ID: {self.bowel_related_organs['small_bowel']}", "INFO")
+    
+    def _log(self, message, level="INFO"):
+        """UI 로깅 및 콘솔 출력"""
+        print(message)  # 콘솔 출력
+        if UI_LOGGING and ui_logger:
+            ui_logger.log(message, level)
         
     def run_segmentation(self, input_path, task='total'):
         """
@@ -267,8 +281,8 @@ class TotalSegmentatorWrapper:
         
         # 먼저 실제 존재하는 라벨들 확인
         unique_labels = np.unique(segmentation_array)
-        print(f"🔍 Segmentation 파일의 라벨들: {unique_labels}")
-        print(f"📊 총 {len(unique_labels)}개 라벨 발견")
+        self._log(f"🔍 Segmentation 파일의 라벨들: {unique_labels[:20]}{'...' if len(unique_labels) > 20 else ''}", "INFO")
+        self._log(f"📊 총 {len(unique_labels)}개 라벨 발견", "INFO")
         
         # 라벨-장기명 역방향 매핑 생성
         label_to_organ = {}
@@ -281,7 +295,7 @@ class TotalSegmentatorWrapper:
         
         # 사용자가 특정 장기들을 지정한 경우
         if organ_names is not None:
-            print(f"🎯 사용자 지정 장기: {organ_names}")
+            self._log(f"🎯 사용자 지정 장기: {organ_names}", "INFO")
             for organ_name in organ_names:
                 mask = self.extract_organ_mask(segmentation_array, organ_name)
                 if mask is not None and np.sum(mask) > 0:
@@ -293,7 +307,9 @@ class TotalSegmentatorWrapper:
                     }
         else:
             # 자동 발견: segmentation 파일에 실제 존재하는 모든 장기 찾기
-            print("🔍 자동 장기 검색 모드")
+            self._log("🔍 자동 장기 검색 모드", "INFO")
+            
+            unknown_organs = []  # 알 수 없는 장기들 추적
             
             for label_id in unique_labels:
                 if label_id == 0:  # 배경 제외
@@ -305,30 +321,44 @@ class TotalSegmentatorWrapper:
                     voxel_count = np.sum(organ_mask)
                     
                     if voxel_count > 50:  # 최소 복셀 수 임계치
-                        print(f"✅ {organ_name} 발견: {voxel_count:,} 복셀")
+                        self._log(f"✅ {organ_name} 발견: {voxel_count:,} 복셀", "SUCCESS")
                         visualization_data[organ_name] = {
                             'mask': organ_mask,
                             'label_id': int(label_id),
                             'color': self._get_organ_color(organ_name)
                         }
                     else:
-                        print(f"⚠️ {organ_name} 너무 작음: {voxel_count} 복셀")
+                        self._log(f"⚠️ {organ_name} 너무 작음: {voxel_count} 복셀", "WARNING")
                 else:
                     # 알려진 매핑에 없는 라벨도 표시
                     voxel_count = np.sum(segmentation_array == label_id)
                     if voxel_count > 100:  # 더 높은 임계치
                         organ_name = f"unknown_label_{label_id}"
                         organ_mask = (segmentation_array == label_id)
-                        print(f"🆕 알 수 없는 장기 발견: label_{label_id} ({voxel_count:,} 복셀)")
+                        self._log(f"🆕 알 수 없는 장기 발견: label_{label_id} ({voxel_count:,} 복셀)", "WARNING")
+                        unknown_organs.append((organ_name, int(label_id), voxel_count))
                         visualization_data[organ_name] = {
                             'mask': organ_mask,
                             'label_id': int(label_id),
                             'color': self._generate_random_color(label_id)
                         }
+            
+            # 알 수 없는 장기들 요약
+            if unknown_organs:
+                self._log(f"📋 발견된 알 수 없는 장기: {len(unknown_organs)}개", "WARNING")
+                for organ_name, label_id, voxel_count in unknown_organs[:5]:  # 처음 5개만
+                    self._log(f"  - {organ_name}: {voxel_count:,} 복셀", "INFO")
+                if len(unknown_organs) > 5:
+                    self._log(f"  ... 및 {len(unknown_organs) - 5}개 추가", "INFO")
         
-        print(f"🎉 최종 검출된 장기: {len(visualization_data)}개")
-        for organ_name in visualization_data.keys():
-            print(f"  - {organ_name}")
+        self._log(f"🎉 최종 검출된 장기: {len(visualization_data)}개", "SUCCESS")
+        known_organs = [name for name in visualization_data.keys() if not name.startswith('unknown_label_')]
+        unknown_count = len(visualization_data) - len(known_organs)
+        
+        if known_organs:
+            self._log(f"  🔬 알려진 장기: {len(known_organs)}개 ({', '.join(known_organs[:3])}{'...' if len(known_organs) > 3 else ''})", "INFO")
+        if unknown_count > 0:
+            self._log(f"  ❓ 알 수 없는 장기: {unknown_count}개", "WARNING")
         
         return visualization_data
     

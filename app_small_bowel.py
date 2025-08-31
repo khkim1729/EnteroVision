@@ -17,6 +17,7 @@ sys.path.append(str(current_dir))
 
 from src.totalsegmentator_wrapper import process_ct_for_visualization
 from src.volume_renderer import VolumeRenderer3D, CTSliceViewer
+from src.ui_logger import ui_logger
 
 # 페이지 설정
 st.set_page_config(
@@ -97,25 +98,75 @@ def main():
     
     # 메인 영역
     if process_button:
-        with st.spinner("CT 데이터 처리 중... 몇 분 소요될 수 있습니다."):
-            try:
-                # CT 데이터 처리
+        # 로그 초기화
+        ui_logger.clear()
+        
+        # 실시간 로그 컨테이너 생성
+        log_container = st.empty()
+        progress_container = st.empty()
+        
+        try:
+            with progress_container:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+            
+            # CT 데이터 처리
+            with st.spinner("CT 데이터 처리 중... 몇 분 소요될 수 있습니다."):
+                status_text.text("🚀 TotalSegmentator 실행 중...")
+                progress_bar.progress(20)
+                
+                ui_logger.log("🚀 CT 데이터 처리 시작", "INFO")
+                ui_logger.log(f"📁 선택된 파일: {selected_file.name}", "INFO")
+                
                 results = process_ct_for_visualization(str(selected_file))
                 
+                progress_bar.progress(80)
+                status_text.text("🎯 시각화 데이터 준비 중...")
+                
                 if results is None:
+                    ui_logger.log("❌ CT 데이터 처리 실패", "ERROR")
                     st.error("CT 데이터 처리에 실패했습니다.")
+                    
+                    # 에러 로그 표시
+                    with st.expander("🚨 에러 로그", expanded=True):
+                        ui_logger.display_logs(show_all=True)
                     return
                 
                 # 세션 상태에 결과 저장
                 st.session_state['results'] = results
                 st.session_state['selected_file'] = selected_file
                 
+                progress_bar.progress(100)
+                status_text.text("✅ 처리 완료!")
+                
+                ui_logger.log("🎉 CT 데이터 처리 완료!", "SUCCESS")
                 st.success("✅ CT 데이터 처리 완료!")
                 
-            except Exception as e:
-                st.error(f"처리 중 오류 발생: {str(e)}")
-                st.code(traceback.format_exc())
-                return
+        except Exception as e:
+            ui_logger.log(f"❌ 처리 중 오류: {str(e)}", "ERROR")
+            ui_logger.log(f"🔍 상세 오류: {traceback.format_exc()}", "DEBUG")
+            
+            st.error(f"처리 중 오류 발생: {str(e)}")
+            
+            # 에러 로그 표시
+            with st.expander("🚨 에러 로그 및 디버그 정보", expanded=True):
+                ui_logger.display_logs(show_all=True)
+            return
+        
+        # 처리 로그 표시
+        if ui_logger.get_logs():
+            with st.expander("📋 처리 로그 보기", expanded=False):
+                ui_logger.display_logs(show_all=True)
+                
+                # 로그 다운로드 버튼
+                log_text = "\n".join([f"[{log['timestamp']}] {log['level']}: {log['message']}" 
+                                     for log in ui_logger.get_logs()])
+                st.download_button(
+                    label="📥 로그 다운로드",
+                    data=log_text,
+                    file_name=f"enterovision_log_{selected_file.stem}.txt",
+                    mime="text/plain"
+                )
     
     # 처리된 데이터가 있는 경우 시각화 표시
     if 'results' in st.session_state:
@@ -153,15 +204,57 @@ def display_visualization(results, selected_organs, show_ct_slices):
     with tab1:
         st.subheader("🎯 3D Volume Rendering")
         
-        # 실시간 장기 선택 (탭 내에서)
+        # 장기 선택 관리
         available_organs = list(results['visualization_data'].keys())
+        known_organs = [name for name in available_organs if not name.startswith('unknown_label_')]
+        unknown_organs = [name for name in available_organs if name.startswith('unknown_label_')]
         
-        # 다중 선택 박스 (탭 내에서 실시간)
+        # 선택 도구
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+        
+        with col1:
+            if st.button("🔍 전체 선택", help="모든 장기 선택"):
+                st.session_state['display_organs_tab1'] = available_organs
+        
+        with col2:
+            if st.button("❌ 전체 해제", help="모든 장기 선택 해제"):
+                st.session_state['display_organs_tab1'] = []
+        
+        with col3:
+            if st.button("🔬 알려진 장기만", help="알려진 장기들만 선택"):
+                st.session_state['display_organs_tab1'] = known_organs
+                
+        with col4:
+            if st.button("❓ Unknown만", help="알 수 없는 장기들만 선택"):
+                st.session_state['display_organs_tab1'] = unknown_organs
+        
+        # 장기 정보 표시
+        st.write(f"**사용 가능한 장기:** 총 {len(available_organs)}개 (알려진: {len(known_organs)}개, Unknown: {len(unknown_organs)}개)")
+        
+        # Unknown 장기들이 있으면 별도 표시
+        if unknown_organs:
+            with st.expander(f"❓ 알 수 없는 장기들 ({len(unknown_organs)}개)", expanded=False):
+                unknown_info = []
+                for organ_name in unknown_organs:
+                    mask = results['visualization_data'][organ_name]['mask']
+                    voxel_count = np.sum(mask)
+                    label_id = results['visualization_data'][organ_name]['label_id']
+                    unknown_info.append(f"• **{organ_name}** (Label ID: {label_id}): {voxel_count:,} 복셀")
+                
+                st.markdown("  \n".join(unknown_info))
+                
+                if st.button("🎯 Unknown 장기들 한번에 보기", key="show_unknowns"):
+                    st.session_state['display_organs_tab1'] = unknown_organs
+        
+        # 다중 선택 박스
+        current_selection = st.session_state.get('display_organs_tab1', available_organs[:3] if len(available_organs) >= 3 else available_organs)
+        
         display_organs = st.multiselect(
             "표시할 장기를 선택하세요:",
             available_organs,
-            default=available_organs[:3] if len(available_organs) >= 3 else available_organs,
-            key="display_organs_tab1"
+            default=current_selection,
+            key="display_organs_tab1",
+            help=f"총 {len(available_organs)}개 장기 중에서 선택"
         )
         
         # CT 슬라이스 표시 옵션
@@ -255,6 +348,9 @@ def display_visualization(results, selected_organs, show_ct_slices):
         
         # 실제로 검출된 장기들만 필터링
         available_organs = list(results['visualization_data'].keys())
+        known_organs = [name for name in available_organs if not name.startswith('unknown_label_')]
+        unknown_organs = [name for name in available_organs if name.startswith('unknown_label_')]
+        
         detected_groups = {}
         
         for group_name, organs in organ_groups.items():
@@ -262,15 +358,52 @@ def display_visualization(results, selected_organs, show_ct_slices):
             if detected_organs:
                 detected_groups[group_name] = detected_organs
         
-        # 미분류된 장기들
+        # 미분류된 알려진 장기들
         categorized_organs = []
         for organs in detected_groups.values():
             categorized_organs.extend(organs)
-        uncategorized = [organ for organ in available_organs if organ not in categorized_organs]
-        if uncategorized:
-            detected_groups["기타"] = detected_groups.get("기타", []) + uncategorized
+        uncategorized_known = [organ for organ in known_organs if organ not in categorized_organs]
+        if uncategorized_known:
+            detected_groups["기타"] = detected_groups.get("기타", []) + uncategorized_known
+        
+        # Unknown 장기들은 별도 그룹으로
+        if unknown_organs:
+            detected_groups["❓ Unknown 장기"] = unknown_organs
         
         st.write(f"**검출된 장기 그룹:** {len(detected_groups)}개 그룹, 총 {len(available_organs)}개 장기")
+        st.write(f"🔬 **알려진 장기:** {len(known_organs)}개 | ❓ **Unknown 장기:** {len(unknown_organs)}개")
+        
+        # Unknown 장기 상세 정보
+        if unknown_organs:
+            with st.expander(f"❓ Unknown 장기 상세 정보 ({len(unknown_organs)}개)", expanded=False):
+                unknown_details = []
+                for organ_name in unknown_organs:
+                    mask = results['visualization_data'][organ_name]['mask']
+                    voxel_count = np.sum(mask)
+                    label_id = results['visualization_data'][organ_name]['label_id']
+                    volume_ml = voxel_count * 0.5
+                    unknown_details.append({
+                        'name': organ_name,
+                        'label_id': label_id,
+                        'voxel_count': voxel_count,
+                        'volume_ml': volume_ml
+                    })
+                
+                # 복셀 수로 정렬
+                unknown_details.sort(key=lambda x: x['voxel_count'], reverse=True)
+                
+                for detail in unknown_details:
+                    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                    with col1:
+                        st.write(f"**{detail['name']}**")
+                    with col2:
+                        st.write(f"Label: {detail['label_id']}")
+                    with col3:
+                        st.write(f"{detail['voxel_count']:,} 복셀")
+                    with col4:
+                        st.write(f"{detail['volume_ml']:.1f} ml")
+                
+                st.info("💡 Unknown 장기들은 TotalSegmentator의 104개 표준 라벨에 포함되지 않은 구조들입니다. 새로운 해부학적 구조이거나 분할 오류일 수 있습니다.")
         
         # 시각화 옵션
         col1, col2 = st.columns(2)
