@@ -262,6 +262,12 @@ pyvenv.cfg
 # Custom application caches
 .enterovision_cache/
 
+# Experiment results (large outputs; keep configs)
+experiments/*/logs/
+experiments/*/results/
+experiments/*/checkpoints/
+experiments/*/weights/
+
 # Profiling files
 *.prof
 
